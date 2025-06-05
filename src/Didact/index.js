@@ -1,19 +1,5 @@
 // build our own react
-import { createTextElement, render } from "./utils"
-
-function createElement(type, props, ...children) {
-    return {
-        type,
-        props: {
-            ...props,
-            children: children.map(child => {
-                return typeof child === 'object'
-                    ? child
-                    : createTextElement(child)
-            })
-        }
-    }
-}
+import { createElement, render } from "./utils"
 
 export const Didact = {
   createElement,
