@@ -15,11 +15,11 @@ import { Didact} from './Didact'
 /**@jsx Didact.createElement */
 const element = (
   <div style="background: salmon">
-    <h1>Hello World</h1>
+    <h1 onClick={()=>{console.log('click h1')}}>Hello World</h1>
     <h2 style="text-align:right">from Didact</h2>
   </div>
 )
-console.log(element)
+// console.log(element)
 const container = document.getElementById('root')
 Didact.render(element, container)
  

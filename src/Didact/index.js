@@ -1,9 +1,10 @@
 // build our own react
-import { createElement, render } from "./utils"
+import { render } from "./utils"
+import { createElement } from "./jsx"
 
 export const Didact = {
   createElement,
-  render
+  render,
 }
 
 /**

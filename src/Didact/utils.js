@@ -1,43 +1,10 @@
-export function createTextElement(text) {
-  return {
-    type: "TEXT_ELEMENT",
-    props: {
-      nodeValue: text,
-      children: [],
-    },
-  };
-}
+import {updateDom, createDom} from "./dom"
+let wipRoot
+let loopCount = 0
 
-export function createElement(type, props, ...children) {
-  return {
-    type,
-    props: {
-      ...props,
-      children: children.map((child) => {
-        return typeof child === "object" ? child : createTextElement(child);
-      }),
-    },
-  };
-}
 
-function createDom(fiber) {
-  // render React Element to Real DOM
-  const dom =
-    fiber.type == "TEXT_ELEMENT"
-      ? document.createTextNode("")
-      : document.createElement(fiber.type);
 
-  const isProperty = (key) => key !== "children";
-  Object.keys(fiber.props)
-    .filter(isProperty)
-    .forEach((name) => {
-      dom[name] = fiber.props[name];
-    });
-  fiber.props.children.forEach((child) => {
-    render(child, dom);
-  });
-  return dom;
-}
+
 
 let nextUnitOfWork = null
 
@@ -55,26 +22,8 @@ function performUnitOfWork(fiber) {
     // }
 
     const elements = fiber.props.children
-    let index = 0
-    let prevSibling = null
+    reconcileChildren(fiber, elements)
 
-    while(index < elements.length) {
-        const element = elements[index]
-        const newFiber = {
-            type: element.type,
-            props: element.props,
-            parent: fiber,
-            dom: null
-        }
-        if(index === 0){
-            fiber.child = newFiber
-        } else {
-            prevSibling.sibling = newFiber
-        }
-
-        prevSibling = newFiber
-        index++
-    }
     if(fiber.child) {
         return fiber.child
     }
@@ -90,18 +39,76 @@ function performUnitOfWork(fiber) {
 }
 
 
-function workLoop(deadline=0) {
+export function workLoop(deadline=0) {
   let shouldYield = false
   while (nextUnitOfWork && !shouldYield) {
+    console.log(wipRoot, 'loopCount', loopCount)
     nextUnitOfWork = performUnitOfWork(
       nextUnitOfWork
     )
+    loopCount++
+
     // shouldYield = deadline.timeRemaining() < 1
   }
-  requestIdleCallback(workLoop)
+  if(!nextUnitOfWork && wipRoot) {
+    commitRoot()
+  }
+  requestIdleCallback(()=>{
+    // console.log('idleCallback')
+    workLoop()
+  })
 }
-let wipRoot
+
+function reconcileChildren(wipFiber, elements){
+  let index = 0
+  let prevSibling = null
+
+  let oldFiber = wipFiber.alternate && wipFiber.alternate.child
+
+
+
+  while(index < elements.length || oldFiber != null) {
+      const element = elements[index]
+
+      let newFiber = null
+
+      const sameType = oldFiber && element && element.type === oldFiber.type
+
+      if(sameType) {
+        newFiber = {
+          type: oldFiber.type,
+          props: element.props,
+          dom: oldFiber.dom,
+          parent: wipFiber,
+          alternate: oldFiber,
+          effectTag: "UPDATE" // this tag will be used during the commit phase
+        }
+      }
+      if(oldFiber && !sameType) {
+        oldFiber.effectTag = "DELETION"
+        deletions.push(oldFiber)
+      }
+
+      newFiber = {
+          type: element.type,
+          props: element.props,
+          parent: wipFiber,
+          dom: null
+      }
+      if(index === 0){
+        wipFiber.child = newFiber
+      } else {
+          prevSibling.sibling = newFiber
+      }
+
+      prevSibling = newFiber
+      index++
+  }
+}
+let deletions = []
 export function render(element, container) {
+  deletions = []
+    console.log('call render')
   // Inside the render, we create the root fiber, and set it as the **nextUnitOfWork**\
   // the rest of work will happen on the **performUnitOfWork**, there we
   //     will do three things for each fiber
@@ -114,11 +121,14 @@ export function render(element, container) {
     dom: container,
     props: {
         children: [element]
-    }
- }
+    },
+    // a link to the old fiber, 
+    // the fiber that we committed to the DOM in the previous commit phase
+ 
+    alternate: currentRoot
+  }
  nextUnitOfWork = wipRoot
  workLoop()
- commitRoot()
   
 //   nextUnitOfWork = {
 //     dom: container,
@@ -131,15 +141,45 @@ export function render(element, container) {
 //   container.append(dom);
 }
 
+/** 
+ * save a reference to that "last fiber tree we committed to the DOM"
+ * after we finish the commit
+ * 
+ */
+let currentRoot = null  
+
 function commitRoot() {
+  deletions.forEach(commitWork)
     commitWork(wipRoot.child)
+    currentRoot = wipRoot
     wipRoot = null
 }
+
+
 
 function commitWork(fiber) {
     if(!fiber)return 
 
     const domParent = fiber.parent.dom
+
+    if (
+      fiber.effectTag === "PLACEMENT" &&
+      fiber.dom != null
+    ) {
+      domParent.appendChild(fiber.dom)
+    } else if (fiber.effectTag === "DELETION") {
+      domParent.removeChild(fiber.dom)
+    } else if (
+      fiber.effectTag === "UPDATE" &&
+      fiber.dom != null
+    ) {
+      updateDom(
+        fiber.dom,
+        fiber.alternate.props,
+        fiber.props
+      )
+    }
+
     domParent.appendChild(fiber.dom)
     commitWork(fiber.child)
     commitWork(fiber.sibling)
