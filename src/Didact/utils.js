@@ -1,17 +1,41 @@
 import {updateDom, createDom} from "./dom"
 let wipRoot
+let hookIndex = null
+let wipFiber = null
 let loopCount = 0
 
+function updateFunctionComponent(fiber){
+  wipFiber = fiber
+  hookIndex = 0
+  wipFiber.hoos = []
+  // invoke App(props), it returns h1 element
+  const children = [fiber.type(fiber.props)]
+  reconcileChildren(fiber, children)
+}
 
+export function updateHostComponent(fiber) {
+  if(!fiber.dom){
+     fiber.dom = createDom(fiber)
+  }
+  reconcileChildren(fiber,fiber.props.children)
+}
 
 
 
 let nextUnitOfWork = null
 
 function performUnitOfWork(fiber) {
-    if(!fiber.dom) {
-        fiber.dom = createDom(fiber)
-    }
+  
+  const isFunctionComponent = fiber.type instanceof Function
+  if(isFunctionComponent) {
+    updateFunctionComponent(fiber)
+  } else {
+    updateHostComponent(fiber)
+  }
+
+    // if(!fiber.dom) {
+    //     fiber.dom = createDom(fiber)
+    // }
 
     //  this might be interrupted by browser, so that we may get an incomplete UI
     //  so we need to remove the part that mutates the DOM 
@@ -155,12 +179,59 @@ function commitRoot() {
     wipRoot = null
 }
 
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.child, domParent)
+  }
+}
+
+function useState(initialValue) {
+  const oldHook = wipFiber.alternate &&
+    wipFiber.alternate.hooks &&
+    wipFiber.alternate.hooks[hookIndex]
+
+  const hook = {
+    state: oldHook ? oldHook.state : initialValue,
+    queue: []
+  }
+
+  
+  const actions = oldHook ? oldHook.queue : []
+  actions.forEach(action => {
+    hook.state = action(hook.state)
+  })
+
+  // useState also return a function to update the state
+  const setState = action => {
+    hook.queue.push(action)
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot
+    }
+    nextUnitOfWork = wipRoot
+    deletions = []
+  }
+
+  wipFiber.hooks.push(hook)
+  hookIndex++
+  return [hook.state, setState]
+}
+
 
 
 function commitWork(fiber) {
     if(!fiber)return 
 
-    const domParent = fiber.parent.dom
+    let domParentFiber = fiber.parent
+    while(!domParentFiber.dom) {
+      domParentFiber = domParentFiber.parent
+    }
+
+    // const domParent = fiber.parent.dom
+    const domParent = domParentFiber.dom
 
     if (
       fiber.effectTag === "PLACEMENT" &&
