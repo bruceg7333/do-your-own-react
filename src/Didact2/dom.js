@@ -19,3 +19,18 @@ export function render(element, container) {
 
     container.appendChild(dom)
 }
+
+
+export function createDom(fiber){
+    let dom = document.createElement(fiber.type)
+    if(fiber.type === 'TEXT_ELEMENT') {
+        dom = document.createTextNode("")
+    } 
+
+    Object.keys(fiber.props)
+        .filter(isProperty)
+        .forEach(name => {
+            dom[name] = fiber.props[name]
+        })
+    return dom
+}
